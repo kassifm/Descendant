@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "Descendant",
+    "slug": "descendant",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kassifm.descendant",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "This app uses Bluetooth to discover and sync with nearby devices for improved altitude accuracy.",
+        "NSBluetoothPeripheralUsageDescription": "This app uses Bluetooth to share altitude data with nearby devices."
+      }
+    },
+    "android": {
+      "package": "com.kassifm.descendant",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_SCAN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_ADVERTISE"
+      ]
+    },
+    "plugins": [
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": [
+            "peripheral",
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to nearby devices for altitude syncing"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ef6d1bfd-2caf-476c-ae95-e74b2db3f57c"
+      }
+    },
+    "owner": "kassifms-organization"
+  }
+}

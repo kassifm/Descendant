@@ -47,6 +47,7 @@ export function useVerticalTracking() {
   const gpsWatchIdRef = useRef<number | null>(null);
   const mockIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const gpsHeightRef = useRef<number | null>(null);
+  const lastHistoryUpdateRef = useRef<number>(0);
 
   useEffect(() => {
     (async () => {
@@ -68,11 +69,11 @@ export function useVerticalTracking() {
           return;
         }
 
-        DeviceMotion.setUpdateInterval(50);
-        LightSensor.setUpdateInterval(500);
-        Magnetometer.setUpdateInterval(500);
+        DeviceMotion.setUpdateInterval(100);
+        LightSensor.setUpdateInterval(1000);
+        Magnetometer.setUpdateInterval(1000);
 
-        await startBarometer(50);
+        await startBarometer(100);
 
         // Check and start Pedometer
         const pedoAvailable = await Pedometer.isAvailableAsync();
@@ -115,17 +116,22 @@ export function useVerticalTracking() {
           setHeight(newHeight);
           setVelocity(newVelocity);
 
-          setHistory((prev) => [
-            ...prev.slice(-299),
-            {
-              height: newHeight,
-              gpsHeight,
-              fusedHeight: newHeight,
-              velocity: newVelocity,
-              timestamp: ts,
-              isMoving: motionRef.current.isMoving(),
-            },
-          ]);
+          // Only update history every 500ms to save CPU
+          const now = Date.now();
+          if (now - lastHistoryUpdateRef.current > 500) {
+            lastHistoryUpdateRef.current = now;
+            setHistory((prev) => [
+              ...prev.slice(-199),
+              {
+                height: newHeight,
+                gpsHeight,
+                fusedHeight: newHeight,
+                velocity: newVelocity,
+                timestamp: ts,
+                isMoving: motionRef.current.isMoving(),
+              },
+            ]);
+          }
         });
 
         motionSub = DeviceMotion.addListener((data) => {
@@ -171,26 +177,30 @@ export function useVerticalTracking() {
         setHeight(mockHeight);
         setPressure(mockPressure);
         setTemperature(20 + Math.random() * 0.5);
-        setVelocity(delta * 20);
+        setVelocity(delta * 10); // Adjusted for 100ms interval
         setLux(Math.random() * 500);
         setMagField(30 + Math.random() * 10);
-        setSteps((s) => s + (Math.random() > 0.9 ? 1 : 0));
+        setSteps((s) => s + (Math.random() > 0.95 ? 1 : 0));
         
         setIsMoving(Math.abs(delta) > 0.02);
 
         const ts = Date.now();
-        setHistory((prev) => [
-          ...prev.slice(-299),
-          {
-            height: mockHeight,
-            gpsHeight: gpsHeightRef.current ?? (mockHeight + (Math.random() - 0.5) * 2),
-            fusedHeight: mockHeight,
-            velocity: delta * 20,
-            timestamp: ts,
-            isMoving: Math.abs(delta) > 0.02,
-          },
-        ]);
-      }, 50);
+        const now = Date.now();
+        if (now - lastHistoryUpdateRef.current > 500) {
+          lastHistoryUpdateRef.current = now;
+          setHistory((prev) => [
+            ...prev.slice(-199),
+            {
+              height: mockHeight,
+              gpsHeight: gpsHeightRef.current ?? (mockHeight + (Math.random() - 0.5) * 2),
+              fusedHeight: mockHeight,
+              velocity: delta * 10,
+              timestamp: ts,
+              isMoving: Math.abs(delta) > 0.02,
+            },
+          ]);
+        }
+      }, 100);
     };
 
     const cleanup = () => {

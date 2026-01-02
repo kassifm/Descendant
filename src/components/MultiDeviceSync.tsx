@@ -20,7 +20,7 @@ export const MultiDeviceSync: React.FC<MultiDeviceSyncProps> = ({ currentHeight 
   const [localDeviceId] = useState(getLocalDeviceId());
   const [connectedDevices, setConnectedDevices] = useState(getConnectedDevices());
   const [nearbyDevices, setNearbyDevices] = useState<NearbyDevice[]>([]);
-  const [autoDiscovery, setAutoDiscovery] = useState(false);
+  const [autoDiscovery, setAutoDiscovery] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => {

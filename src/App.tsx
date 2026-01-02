@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PaperProvider, Text, ActivityIndicator, Button } from 'react-native-paper';
 import { lightTheme, darkTheme, spacing } from './utils/theme';
 import { useVerticalTracking } from './hooks/useVerticalTracking';
-import { getCalibration } from './utils/pressureToHeight';
+import { getCalibration, calibrateEntrance } from './utils/pressureToHeight';
 import { applySyncOffset } from './utils/syncOffsets';
 import { HeightCard } from './components/HeightCard';
 import { CalibrationWizard } from './components/CalibrationWizard';
@@ -14,6 +14,7 @@ import { SensorStatus } from './components/SensorStatus';
 const App: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isCalibrated, setIsCalibrated] = useState(false);
+  const [autoCalibration, setAutoCalibration] = useState(true);
 
   const { height, velocity, pressure, temperature, gpsHeight, gpsAccuracy, isMoving, history, lux, humidity, magField, steps } =
     useVerticalTracking();
@@ -22,6 +23,15 @@ const App: React.FC = () => {
     const cal = getCalibration();
     setIsCalibrated(cal !== null);
   }, []);
+
+  // Automatic Calibration Logic
+  useEffect(() => {
+    if (autoCalibration && !isCalibrated && gpsHeight !== null && (gpsAccuracy ?? 100) < 10 && !isMoving && pressure !== null && temperature !== null) {
+      calibrateEntrance(pressure, temperature, gpsHeight).then(() => {
+        setIsCalibrated(true);
+      });
+    }
+  }, [autoCalibration, isCalibrated, gpsHeight, gpsAccuracy, isMoving, pressure, temperature]);
 
   const displayHeight = applySyncOffset(height);
   const theme = isDarkMode ? darkTheme : lightTheme;
@@ -78,11 +88,28 @@ const App: React.FC = () => {
               Setup & Calibration
             </Text>
             {pressure !== null && temperature !== null ? (
-              <CalibrationWizard
-                pressure={pressure}
-                temperature={temperature}
-                onCalibrated={() => setIsCalibrated(true)}
-              />
+              <View>
+                <CalibrationWizard
+                  pressure={pressure}
+                  temperature={temperature}
+                  onCalibrated={() => setIsCalibrated(true)}
+                />
+                <View style={styles.autoRow}>
+                  <Text variant="bodyMedium">Auto-detect calibration</Text>
+                  <Button 
+                    mode={autoCalibration ? "contained-tonal" : "outlined"}
+                    onPress={() => setAutoCalibration(!autoCalibration)}
+                    compact
+                  >
+                    {autoCalibration ? 'ON' : 'OFF'}
+                  </Button>
+                </View>
+                {autoCalibration && !isCalibrated && (
+                  <Text variant="bodySmall" style={styles.autoHint}>
+                    Waiting for high GPS accuracy to auto-calibrate...
+                  </Text>
+                )}
+              </View>
             ) : (
               <View style={styles.loadingCard}>
                 <ActivityIndicator animating size="large" />
@@ -197,6 +224,19 @@ const styles = StyleSheet.create({
   footerText: {
     color: '#999',
     marginBottom: spacing.xs,
+  },
+  autoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  autoHint: {
+    paddingHorizontal: spacing.lg,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 2,
   },
 });
 

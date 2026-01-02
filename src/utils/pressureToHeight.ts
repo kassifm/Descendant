@@ -55,20 +55,30 @@ export function getCalibration(): CalibrationState | null {
   return calibration;
 }
 
+/**
+ * Calculates altitude using the Hypsometric Equation:
+ * h = ((P0/P)^(1/5.257) - 1) * (T + 273.15) / 0.0065
+ * 
+ * Refined with Humidity compensation (Virtual Temperature)
+ */
 export function getCalibratedHeight(
-  currentPressure: number,
-  currentTemperature: number
-): number | null {
-  if (!calibration) return null;
-  return (
-    calibration.referenceHeight +
-    temperatureCorrectedHeight(
-      currentPressure,
-      calibration.referencePressure,
-      currentTemperature,
-      calibration.referenceTemperature
-    )
-  );
+  pressureHPa: number,
+  tempC: number = 20,
+  humidityPercent: number = 0
+): number {
+  if (!calibration) return 0;
+
+  // Virtual temperature adjustment (dry air vs moist air)
+  // Moist air is less dense, affecting pressure readings
+  const vaporPressure = (humidityPercent / 100) * 6.112 * Math.exp((17.67 * tempC) / (tempC + 243.5));
+  const virtualTempK = (tempC + 273.15) / (1 - (vaporPressure / pressureHPa) * (1 - 0.622));
+
+  // The Hypsometric formula
+  // Assuming calibration.referencePressure is P0 (pressure at reference height)
+  // and the formula calculates the height difference from that reference.
+  const heightDifference = ((Math.pow(calibration.referencePressure / pressureHPa, 1 / 5.25588) - 1) * virtualTempK) / 0.0065;
+  
+  return calibration.referenceHeight + heightDifference;
 }
 
 export async function clearCalibration(): Promise<void> {

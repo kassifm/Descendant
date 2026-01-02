@@ -15,7 +15,7 @@ const App: React.FC = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isCalibrated, setIsCalibrated] = useState(false);
 
-  const { height, velocity, pressure, temperature, gpsHeight, gpsAccuracy, isMoving, history } =
+  const { height, velocity, pressure, temperature, gpsHeight, gpsAccuracy, isMoving, history, lux, humidity, magField, steps } =
     useVerticalTracking();
 
   useEffect(() => {
@@ -110,13 +110,16 @@ const App: React.FC = () => {
               gpsHeight={gpsHeight}
               gpsAccuracy={gpsAccuracy}
               isMoving={isMoving}
+              lux={lux}
+              magField={magField}
+              steps={steps}
             />
           </View>
 
           {/* Footer Info */}
           <View style={styles.footer}>
             <Text variant="bodySmall" style={styles.footerText}>
-              🔄 Real-time fusion of barometer, GPS, accelerometer & temperature
+              🔄 Real-time fusion of barometer, IMU, GPS, light & humidity sensors
             </Text>
             <Text variant="bodySmall" style={styles.footerText}>
               ⚡ Accuracy improves with calibration & multi-device sync

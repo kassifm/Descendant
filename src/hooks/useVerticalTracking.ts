@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { Accelerometer, Gyroscope } from 'expo-sensors';
+import { DeviceMotion, LightSensor, Magnetometer, Pedometer } from 'expo-sensors';
 import { Subscription } from 'expo-sensors/build/DeviceSensor';
+import { Platform } from 'react-native';
 
 import {
   startBarometer,
@@ -32,6 +33,10 @@ export function useVerticalTracking() {
   const [temperature, setTemperature] = useState<number | null>(null);
   const [gpsHeight, setGpsHeight] = useState<number | null>(null);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [lux, setLux] = useState<number | null>(null);
+  const [humidity, setHumidity] = useState<number | null>(null);
+  const [magField, setMagField] = useState<number | null>(null);
+  const [steps, setSteps] = useState(0);
   const [isMoving, setIsMoving] = useState(false);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
 
@@ -48,8 +53,10 @@ export function useVerticalTracking() {
       await loadCalibration();
     })();
 
-    let accelSub: Subscription | null = null;
-    let gyroSub: Subscription | null = null;
+    let motionSub: Subscription | null = null;
+    let lightSub: Subscription | null = null;
+    let magSub: Subscription | null = null;
+    let pedoSub: { remove: () => void } | null = null;
     let baroSub: { remove: () => void } | null = null;
 
     const startRealSensors = async () => {
@@ -61,10 +68,24 @@ export function useVerticalTracking() {
           return;
         }
 
-        Accelerometer.setUpdateInterval(50);
-        Gyroscope.setUpdateInterval(50);
+        DeviceMotion.setUpdateInterval(50);
+        LightSensor.setUpdateInterval(500);
+        Magnetometer.setUpdateInterval(500);
 
         await startBarometer(50);
+
+        // Check and start Pedometer
+        const pedoAvailable = await Pedometer.isAvailableAsync();
+        if (pedoAvailable) {
+          pedoSub = Pedometer.watchStepCount((result) => {
+            setSteps(result.steps);
+          });
+        }
+
+        magSub = Magnetometer.addListener((data) => {
+          const strength = Math.sqrt(data.x ** 2 + data.y ** 2 + data.z ** 2);
+          setMagField(strength);
+        });
 
         baroSub = addBarometerListener((event: SensorReading) => {
           if (event.pressure) setPressure(event.pressure);
@@ -73,21 +94,18 @@ export function useVerticalTracking() {
           const calibration = getCalibration();
           const temp = temperature ?? 20;
           const baroHeight =
-            calibration && pressure
-              ? getCalibratedHeight(event.pressure ?? pressure, temp)
+            calibration && (event.pressure ?? pressure)
+              ? getCalibratedHeight(event.pressure ?? pressure ?? 0, temp, humidity ?? 0)
               : null;
 
-          const accel = lastAccelRef.current;
-          if (!baroHeight || !accel) return;
+          if (!baroHeight || !lastAccelRef.current) return;
 
-          const verticalAccel = accel.z - 9.81;
-
-          const ts = accel.timestamp ?? event.timestamp;
+          const ts = event.timestamp;
 
           kalmanRef.current.update({
             baroHeight,
             gpsHeight: gpsHeight ?? undefined,
-            linearAccelZ: verticalAccel,
+            linearAccelZ: lastAccelRef.current.z,
             timestamp: ts,
           });
 
@@ -110,15 +128,22 @@ export function useVerticalTracking() {
           ]);
         });
 
-        accelSub = Accelerometer.addListener((accel) => {
-          const event = { x: accel.x, y: accel.y, z: accel.z, timestamp: Date.now() };
-          lastAccelRef.current = event;
-          motionRef.current.addReading(event.x, event.y, event.z, event.timestamp);
-          setIsMoving(motionRef.current.isMoving());
+        motionSub = DeviceMotion.addListener((data) => {
+          if (data.acceleration) {
+            const event = { 
+              x: data.acceleration.x, 
+              y: data.acceleration.y, 
+              z: data.acceleration.z, 
+              timestamp: Date.now() 
+            };
+            lastAccelRef.current = event;
+            motionRef.current.addReading(event.x, event.y, event.z, event.timestamp);
+            setIsMoving(motionRef.current.isMoving());
+          }
         });
 
-        gyroSub = Gyroscope.addListener((gyro) => {
-          lastGyroRef.current = gyro;
+        lightSub = LightSensor.addListener((data) => {
+          setLux(data.illuminance);
         });
 
       } catch (e) {
@@ -134,30 +159,30 @@ export function useVerticalTracking() {
       let mockHeight = 10;
       let mockPressure = 1013.25;
 
-      // Initialize mock height from real GPS if available, to avoid jump
       if (gpsHeightRef.current != null) {
          mockHeight = gpsHeightRef.current;
       }
       
       mockIntervalRef.current = setInterval(() => {
-        // Simulate very gradual, smooth movement
-        const delta = (Math.random() - 0.5) * 0.1; // Reduced from 0.5 to 0.1
+        const delta = (Math.random() - 0.5) * 0.1;
         mockHeight += delta;
-        mockPressure -= delta * 0.12; // Approximation
+        mockPressure -= delta * 0.12;
 
         setHeight(mockHeight);
         setPressure(mockPressure);
-        setTemperature(20 + Math.random() * 0.5); // Reduced temperature variation
-        setVelocity(delta * 20); // 50ms interval ~ 20Hz
+        setTemperature(20 + Math.random() * 0.5);
+        setVelocity(delta * 20);
+        setLux(Math.random() * 500);
+        setMagField(30 + Math.random() * 10);
+        setSteps((s) => s + (Math.random() > 0.9 ? 1 : 0));
         
-        setIsMoving(Math.abs(delta) > 0.02); // Reduced threshold
+        setIsMoving(Math.abs(delta) > 0.02);
 
         const ts = Date.now();
         setHistory((prev) => [
           ...prev.slice(-299),
           {
             height: mockHeight,
-            // Use real GPS if available, otherwise mock with less variation
             gpsHeight: gpsHeightRef.current ?? (mockHeight + (Math.random() - 0.5) * 2),
             fusedHeight: mockHeight,
             velocity: delta * 20,
@@ -169,8 +194,10 @@ export function useVerticalTracking() {
     };
 
     const cleanup = () => {
-       accelSub?.remove();
-       gyroSub?.remove();
+       motionSub?.remove();
+       lightSub?.remove();
+       magSub?.remove();
+       pedoSub?.remove();
        baroSub?.remove();
        stopBarometer().catch(() => {});
        if (gpsWatchIdRef.current) clearWatch(gpsWatchIdRef.current);
@@ -196,5 +223,5 @@ export function useVerticalTracking() {
     };
   }, []);
 
-  return { height, velocity, pressure, temperature, gpsHeight, gpsAccuracy, isMoving, history };
+  return { height, velocity, pressure, temperature, gpsHeight, gpsAccuracy, isMoving, history, lux, humidity, magField, steps };
 }
